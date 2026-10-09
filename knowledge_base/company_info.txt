@@ -1,0 +1,20 @@
+AcmeTech Solutions - Corporate Overview & Knowledge Base
+
+About Us
+AcmeTech Solutions is a premier enterprise software provider specializing in cloud-native automation platforms. Founded in 2018 and headquartered in Austin, Texas, our mission is to eliminate manual data entry and streamline operational workflows for mid-market and enterprise organizations. Our flagship product, WorkflowPro, leverages AI to seamlessly connect disjointed systems, allowing teams to focus on strategic initiatives rather than repetitive tasks.
+
+Pricing & Plans
+We offer three main subscription tiers, billed annually:
+1. Starter Plan ($499/month): Includes up to 10 user licenses, basic email support, and 50 GB of cloud storage. Ideal for small teams just getting started with workflow automation.
+2. Professional Plan ($1,299/month): Includes up to 50 user licenses, priority 24/7 chat support, 500 GB of storage, and access to our advanced analytics dashboard. This is our most popular tier.
+3. Enterprise Plan (Custom Pricing, typically starting at $3,500/month): Unlimited licenses, dedicated customer success manager, custom API integrations, and on-premise deployment options if required. 
+
+Implementation & Security
+Implementation timelines usually range from 2 to 6 weeks, depending on the complexity of legacy system integrations. Our onboarding team provides two weeks of dedicated training for all Professional and Enterprise customers at no additional cost. 
+Security is paramount at AcmeTech. We are SOC 2 Type II certified, fully GDPR compliant, and employ end-to-end AES-256 encryption for all data at rest and in transit.
+
+Competitive Advantage
+When compared to competitors like ZephyrCloud or DataSync, AcmeTech stands out due to our intuitive drag-and-drop interface, which requires zero coding knowledge. Furthermore, our automated error-handling protocols reduce workflow failure rates by up to 40% compared to industry averages. While ZephyrCloud requires extensive developer support to maintain integrations, WorkflowPro empowers non-technical business analysts to manage and update automations independently.
+
+Discounts
+We offer a 15% discount for non-profit organizations and a 10% discount for customers who commit to a 3-year contract upfront. We do not offer month-to-month billing.

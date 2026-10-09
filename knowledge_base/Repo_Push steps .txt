@@ -1,0 +1,16 @@
+Steps : 
+ 1. Create folder by name repos 
+ 2.enter into cmd prompot from that location 
+ 3.then in cmd enter git clone "link from azure devops url"
+ 4.then go to this folder and then Open with pycharm
+ 5. got to terminal then enter "git status"\
+ 6. now in that folder which was cloned add the entire codebase 
+ now enter git add .
+ 
+ then 
+ git commit -m "comment"
+ 
+ git push
+ 
+ git status
+ 
