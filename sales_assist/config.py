@@ -62,6 +62,20 @@ AUDIO_CHUNK_FRAMES: int = AUDIO_SAMPLE_RATE * AUDIO_CHUNK_DURATION_MS // 1000  #
 
 
 # ---------------------------------------------------------------------------
+# LLM & Generation settings
+# ---------------------------------------------------------------------------
+OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "150"))
+SPECULATIVE_PREFETCH: bool = os.getenv("SPECULATIVE_PREFETCH", "true").lower() in ("true", "1", "yes")
+
+# ---------------------------------------------------------------------------
+# Embedding settings (Local BAAI/bge-small-en-v1.5 or OpenAI)
+# ---------------------------------------------------------------------------
+EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "local").lower()
+LOCAL_EMBEDDING_MODEL: str = os.getenv("LOCAL_EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+LOCAL_MODELS_DIR: str = os.getenv("LOCAL_MODELS_DIR", "models")
+
+# ---------------------------------------------------------------------------
 # Document Ingestion settings
 # ---------------------------------------------------------------------------
 # The folder to automatically watch and ingest on startup
@@ -72,4 +86,6 @@ def validate() -> list[str]:
     errors: list[str] = []
     if not SARVAM_API_KEY:
         errors.append("SARVAM_API_KEY is not set in .env")
+    if not OPENAI_API_KEY:
+        errors.append("OPENAI_API_KEY is not set in .env")
     return errors

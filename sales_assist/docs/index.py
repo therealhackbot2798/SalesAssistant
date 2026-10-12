@@ -23,6 +23,7 @@ from typing import Optional
 
 import faiss
 import numpy as np
+from fastembed import TextEmbedding
 from openai import OpenAI
 
 from sales_assist import config
@@ -34,13 +35,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_DIM = 1536  # text-embedding-3-small dimension
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
+OPENAI_EMBEDDING_DIM = 1536
+
+LOCAL_EMBEDDING_DIM = 384  # BAAI/bge-small-en-v1.5 vector dimension
+
 INDEX_DIR_NAME = ".sales_assist_index"
 INDEX_FILE = "faiss.index"
 META_FILE = "metadata.json"
 HASHES_FILE = "file_hashes.json"
-BATCH_SIZE = 64  # OpenAI embedding API batch limit
+BATCH_SIZE = 64  # Batch limit for embeddings
 
 
 # ---------------------------------------------------------------------------
@@ -123,15 +127,66 @@ class DocumentIndex:
         self._persist_dir = Path(persist_dir or INDEX_DIR_NAME).resolve()
         self._persist_dir.mkdir(parents=True, exist_ok=True)
 
+        self._provider: str = config.EMBEDDING_PROVIDER
+        self._embedding_dim: int = (
+            LOCAL_EMBEDDING_DIM if self._provider == "local" else OPENAI_EMBEDDING_DIM
+        )
         self._client: Optional[OpenAI] = None
+        self._local_embedder: Optional[TextEmbedding] = None
+
         self._index: Optional[faiss.IndexFlatIP] = None
         self._metadata: list[ChunkMeta] = []
         self._file_hashes: dict[str, str] = {}  # filename -> sha256
+        self._query_cache: dict[str, np.ndarray] = {}  # normalized_query -> query_vec
+
+        # Warm up local model immediately on startup so first query has 0 warmup delay
+        if self._provider == "local":
+            self._warmup_local_model()
 
         self._load_from_disk()
 
     # ------------------------------------------------------------------
-    # Embedding client (lazy init)
+    # Local Model Warmup
+    # ------------------------------------------------------------------
+    def _warmup_local_model(self) -> None:
+        """
+        Loads the local BAAI/bge-small-en-v1.5 model from the local models folder
+        and executes a warmup embedding pass immediately so the first user query
+        does not suffer any warmup latency.
+        """
+        if self._local_embedder is not None:
+            return
+
+        t0 = time.perf_counter()
+        models_dir = Path(config.LOCAL_MODELS_DIR).resolve()
+        models_dir.mkdir(parents=True, exist_ok=True)
+        model_name = config.LOCAL_EMBEDDING_MODEL
+
+        logger.info("Initializing local embedding model '%s' from '%s' ...", model_name, models_dir)
+        self._local_embedder = TextEmbedding(
+            model_name=model_name,
+            cache_dir=str(models_dir),
+        )
+
+        t_warm0 = time.perf_counter()
+        # Warmup pass (run on dummy text)
+        _ = list(self._local_embedder.embed(["warmup query for bge small en v1.5"]))
+        t_now = time.perf_counter()
+
+        load_ms = (t_warm0 - t0) * 1000.0
+        warmup_ms = (t_now - t_warm0) * 1000.0
+
+        logger.info(
+            "Local embedding model '%s' ready (init: %.1fms, warmup: %.1fms, dim: %d).",
+            model_name, load_ms, warmup_ms, self._embedding_dim,
+        )
+        print(
+            f"[*] [EMBEDDINGS READY] Local model '{model_name}' loaded & warmed up in {load_ms + warmup_ms:.1f} ms (dim={self._embedding_dim}, local CPU)",
+            flush=True,
+        )
+
+    # ------------------------------------------------------------------
+    # Embedding client (lazy init for OpenAI fallback)
     # ------------------------------------------------------------------
     def _get_client(self) -> OpenAI:
         if self._client is None:
@@ -152,17 +207,26 @@ class DocumentIndex:
 
         if index_path.exists() and meta_path.exists():
             self._index = faiss.read_index(str(index_path))
-            with open(meta_path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-            self._metadata = [ChunkMeta.from_dict(d) for d in raw]
-            logger.info(
-                "Loaded existing index: %d vectors, %d metadata entries.",
-                self._index.ntotal, len(self._metadata),
-            )
+            if self._index.d != self._embedding_dim:
+                logger.warning(
+                    "Existing FAISS index dim (%d) does not match configured embedding dim (%d). Recreating index.",
+                    self._index.d, self._embedding_dim,
+                )
+                self._index = faiss.IndexFlatIP(self._embedding_dim)
+                self._metadata = []
+                self._file_hashes = {}
+            else:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                self._metadata = [ChunkMeta.from_dict(d) for d in raw]
+                logger.info(
+                    "Loaded existing index: %d vectors, %d metadata entries.",
+                    self._index.ntotal, len(self._metadata),
+                )
         else:
-            self._index = faiss.IndexFlatIP(EMBEDDING_DIM)
+            self._index = faiss.IndexFlatIP(self._embedding_dim)
             self._metadata = []
-            logger.info("Created new empty FAISS index (dim=%d).", EMBEDDING_DIM)
+            logger.info("Created new empty FAISS index (dim=%d).", self._embedding_dim)
 
         if hashes_path.exists():
             with open(hashes_path, "r", encoding="utf-8") as f:
@@ -194,11 +258,18 @@ class DocumentIndex:
     # ------------------------------------------------------------------
     def _embed_texts(self, texts: list[str]) -> np.ndarray:
         """
-        Embed a list of texts using OpenAI text-embedding-3-small.
-
-        Returns an (N, EMBEDDING_DIM) float32 array, L2-normalized for
-        cosine similarity via inner product.
+        Embed a list of texts using local fastembed (BGE) or OpenAI API.
+        Returns an (N, dim) float32 array, L2-normalized for cosine similarity.
         """
+        if self._provider == "local":
+            if self._local_embedder is None:
+                self._warmup_local_model()
+            embeddings = list(self._local_embedder.embed(texts))
+            arr = np.array(embeddings, dtype=np.float32)
+            faiss.normalize_L2(arr)
+            return arr
+
+        # OpenAI fallback
         client = self._get_client()
         all_embeddings: list[list[float]] = []
 
@@ -206,13 +277,12 @@ class DocumentIndex:
             batch = texts[i : i + BATCH_SIZE]
             response = client.embeddings.create(
                 input=batch,
-                model=EMBEDDING_MODEL,
+                model=OPENAI_EMBEDDING_MODEL,
             )
             batch_embs = [item.embedding for item in response.data]
             all_embeddings.extend(batch_embs)
 
         arr = np.array(all_embeddings, dtype=np.float32)
-        # L2 normalize for cosine similarity via IndexFlatIP
         faiss.normalize_L2(arr)
         return arr
 
@@ -415,7 +485,15 @@ class DocumentIndex:
             logger.warning("Index is empty – nothing to search.")
             return []
 
-        query_vec = self._embed_texts([query])
+        norm_query = " ".join(query.strip().lower().split())
+        if norm_query in self._query_cache:
+            query_vec = self._query_cache[norm_query]
+        else:
+            query_vec = self._embed_texts([query])
+            if len(self._query_cache) >= 500:
+                self._query_cache.pop(next(iter(self._query_cache)))
+            self._query_cache[norm_query] = query_vec
+
         scores, indices = self._index.search(query_vec, min(top_k, self._index.ntotal))
 
         results: list[tuple[ChunkMeta, float]] = []
@@ -439,8 +517,9 @@ class DocumentIndex:
 
     def clear(self) -> None:
         """Remove all data from the index."""
-        self._index = faiss.IndexFlatIP(EMBEDDING_DIM)
+        self._index = faiss.IndexFlatIP(self._embedding_dim)
         self._metadata = []
         self._file_hashes = {}
+        self._query_cache.clear()
         self._save_to_disk()
         logger.info("Index cleared.")

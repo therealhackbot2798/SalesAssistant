@@ -12,12 +12,13 @@ RULES:
 1. Answer ONLY using the facts from the Context.
 2. If the Context does not contain the answer, output exactly: "Not in docs, suggest following up." Do NOT invent prices, features, or make commitments.
 3. Keep it brief! The salesperson is on a live call. Output 2-3 short bullet points (max ~15 words each).
-4. Optionally, end with one short follow-up question the salesperson can ask to keep the conversation going.
+4. Start DIRECTLY with the bullet points. NEVER include conversational filler, greetings, or intro statements like "Based on the context...".
+5. Optionally, end with one short follow-up question the salesperson can ask to keep the conversation going.
 
 FORMAT:
-• Point 1
-• Point 2
-• Point 3
+- Point 1
+- Point 2
+- Point 3
 
 Follow-up: [Question]?
 """

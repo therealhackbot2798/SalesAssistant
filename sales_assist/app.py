@@ -65,13 +65,9 @@ def _start_llm_thread(engine: AnswerEngine, text: str) -> None:
     def _run():
         with _print_lock:
             print(f"\n💡 [TRIGGER DETECTED]: {text}")
-            print("-" * 60)
             
-        # Generate answer blocking (streams via callback)
+        # Generate answer blocking (streams via callback and prints step latencies)
         engine.generate_answer(text, _on_llm_token)
-        
-        with _print_lock:
-            print("\n" + "-" * 60 + "\n")
             
     threading.Thread(target=_run, daemon=True, name="llm-worker").start()
 
@@ -87,7 +83,14 @@ def get_transcript_callback(engine: AnswerEngine) -> Callable[[TranscriptEvent],
                 print(f"  ✓ [{event.utterance_id[:6]}] {clean_text}")
                 
         # Outside the print lock, handle the logic
-        if isinstance(event, FinalTranscript):
+        if isinstance(event, PartialTranscript):
+            if config.SPECULATIVE_PREFETCH and engine.is_trigger(event.text):
+                threading.Thread(
+                    target=engine.prefetch_context,
+                    args=(event.text,),
+                    daemon=True,
+                ).start()
+        elif isinstance(event, FinalTranscript):
             engine.push_utterance(event.text)
             
             # Fire-and-forget trigger check

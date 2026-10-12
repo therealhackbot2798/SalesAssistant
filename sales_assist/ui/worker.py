@@ -76,6 +76,13 @@ class BackendWorker(QObject):
         """Callback from STTProvider. Emits Qt signals."""
         if isinstance(event, PartialTranscript):
             self.partial_transcript.emit(event.utterance_id, event.text)
+            # Speculative pre-fetch if enabled and text looks like a question/trigger
+            if config.SPECULATIVE_PREFETCH and self._engine.is_trigger(event.text):
+                threading.Thread(
+                    target=self._engine.prefetch_context,
+                    args=(event.text,),
+                    daemon=True,
+                ).start()
         elif isinstance(event, FinalTranscript):
             self.final_transcript.emit(event.utterance_id, event.text)
             self._engine.push_utterance(event.text)

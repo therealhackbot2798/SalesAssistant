@@ -12,7 +12,7 @@ from sales_assist.audio.loopback import LoopbackCapture
 from sales_assist.docs.index import DocumentIndex
 from sales_assist.docs.watcher import DocsWatcher
 from sales_assist.llm.answer import AnswerEngine
-from sales_assist.stt.base import FinalTranscript, TranscriptEvent
+from sales_assist.stt.base import FinalTranscript, PartialTranscript, TranscriptEvent
 from sales_assist.stt.sarvam import SarvamSTTProvider
 
 # Silence noisy logs
@@ -150,7 +150,14 @@ class SalesAssistApp(ctk.CTk):
             threading.Thread(target=_run, daemon=True).start()
 
         def _on_transcript(event: TranscriptEvent):
-            if isinstance(event, FinalTranscript):
+            if isinstance(event, PartialTranscript):
+                if config.SPECULATIVE_PREFETCH and self.engine.is_trigger(event.text):
+                    threading.Thread(
+                        target=self.engine.prefetch_context,
+                        args=(event.text,),
+                        daemon=True,
+                    ).start()
+            elif isinstance(event, FinalTranscript):
                 clean_text = event.text.replace('\n', ' ').strip()
                 self.ui_queue.put(("transcript", clean_text))
                 

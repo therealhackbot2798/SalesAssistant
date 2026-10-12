@@ -19,15 +19,20 @@ def main():
 
     print("Building Sales Assist executable...")
     
+    # Support --console or --windowed (default: --console so terminal latency stats are visible)
+    # Pass --windowed to suppress the terminal window.
+    window_mode = "--windowed" if "--windowed" in sys.argv else "--console"
+    
     # We use PyInstaller's CLI via subprocess
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
-        "--windowed",       # Don't open a console window
+        window_mode,
         "--onedir",         # Build a folder (faster startup than onefile)
         "--name=SalesAssist",
-        # We need to include the sales_assist package
         "--paths=.", 
+        "--collect-all=fastembed",
+        "--collect-all=onnxruntime",
         # Entry point
         "sales_assist/main.py"
     ]
@@ -55,6 +60,15 @@ def main():
                 shutil.rmtree(kb_dest)
             shutil.copytree(kb_src, kb_dest)
             print("[+] Copied knowledge_base folder into build folder.")
+
+        # Copy local models folder if available
+        models_src = Path("models")
+        if models_src.exists():
+            models_dest = dist_dir / "models"
+            if models_dest.exists():
+                shutil.rmtree(models_dest)
+            shutil.copytree(models_src, models_dest)
+            print("[+] Copied local models folder into build folder.")
 
         try:
             print("\n✅ Build successful! Executable is in the 'dist/SalesAssist' folder.")

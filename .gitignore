@@ -224,6 +224,7 @@ __marimo__/
 sales_assist/.env
 *.env
 .sales_assist_index/
+models/
 .idea/
 *.log
 sales_assist.log
